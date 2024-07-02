@@ -1,6 +1,6 @@
 import os
 import logging
-from flask import Flask, request, jsonify, render_template, send_file
+from flask import Flask, request, jsonify, render_template, send_file, Response
 from flask_cors import CORS
 import requests
 from bs4 import BeautifulSoup
@@ -21,11 +21,9 @@ def has_significant_content(soup):
     else:
         text = soup.get_text(separator=' ', strip=True)
 
-    words = text.split()
-    word_count = len(words)
-
-    logger.info(f"Word count: {word_count}")
-    return word_count > 300
+    character_count = len(text)
+    logger.info(f"Character count: {character_count}")
+    return character_count > 300
 
 @app.route('/')
 def index():
@@ -39,51 +37,60 @@ def check_links():
 
     logger.info(f"Received request to check {len(urls)} URLs")
 
-    valid_links = []
-    invalid_links = []
-    links_with_articles = []
-
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36'
     }
 
+    valid_count, invalid_count, insignificant_count = 0, 0, 0
+    results = []
     for url in urls[:100]:  # Limit to first 100 URLs for safety
         if not (url.startswith('http://') or url.startswith('https://')):
             url = 'https://' + url
 
+        entry = {"URL": url}
         try:
             response = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
             if response.status_code == 200:
-                valid_links.append(url)
                 soup = BeautifulSoup(response.content, 'html.parser')
                 if has_significant_content(soup):
-                    links_with_articles.append(url)
+                    entry["Content"] = "Significant"
+                    valid_count += 1
+                else:
+                    entry["Content"] = "Insignificant"
+                    insignificant_count += 1
+                entry["Status"] = "Valid"
             else:
-                invalid_links.append(url)
+                entry["Status"] = f"Invalid ({response.status_code})"
+                invalid_count += 1
         except requests.RequestException as e:
-            logger.error(f"Error checking URL {url}: {str(e)}")
-            invalid_links.append(url)
+            entry["Status"] = f"Error ({str(e)})"
+            invalid_count += 1
+        
+        results.append(entry)
 
-    data = {
-        "Valid Links Count": [len(valid_links)],
-        "Invalid Links Count": [len(invalid_links)],
-        "Links with Articles Count": [len(links_with_articles)],
-        "Valid Links": [', '.join(valid_links)],
-        "Invalid Links": [', '.join(invalid_links)],
-        "Links with Articles": [', '.join(links_with_articles)],
+    summary = {
+        "total_urls": len(urls),
+        "valid_links": valid_count,
+        "invalid_links": invalid_count,
+        "insignificant_content": insignificant_count
     }
 
-    df = pd.DataFrame(data)
+    # Create CSV file
+    df = pd.DataFrame(results)
     output = BytesIO()
     df.to_csv(output, index=False, encoding='utf-8')
     output.seek(0)
 
-    return send_file(
-        output,
-        mimetype='text/csv',
-        as_attachment=True,
-        download_name='links_analysis.csv'
-    )
+    # Choose what to return based on the request's accept header
+    if 'text/csv' in request.headers.get('Accept', ''):
+        return send_file(
+            output,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name='links_analysis.csv'
+        )
+    else:
+        return jsonify(summary)
 
 @app.errorhandler(404)
 def not_found(error):
@@ -95,4 +102,4 @@ def server_error(error):
     return jsonify({"error": "Internal server error"}), 500
 
 if __name__ == '__main__':
-    app.run()
+    app.run(debug=True)
