@@ -1,10 +1,18 @@
-from flask import Flask, request, jsonify, render_template, send_file, Response
-from bs4 import BeautifulSoup
+import os
+import logging
+from flask import Flask, request, jsonify, render_template, send_file
+from flask_cors import CORS
 import requests
+from bs4 import BeautifulSoup
 import pandas as pd
 from io import BytesIO
 
 app = Flask(__name__)
+CORS(app)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = app.logger
 
 def has_significant_content(soup):
     main_content = soup.find('main') or soup.find('article') or soup.find('div', class_='content')
@@ -13,7 +21,11 @@ def has_significant_content(soup):
     else:
         text = soup.get_text(separator=' ', strip=True)
 
-    return len(text.split()) > 300
+    words = text.split()
+    word_count = len(words)
+
+    logger.info(f"Word count: {word_count}")
+    return word_count > 300, word_count
 
 @app.route('/')
 def index():
@@ -25,47 +37,67 @@ def check_links():
     if not urls:
         return jsonify({"error": "No URLs provided"}), 400
 
-    valid_links = []
-    invalid_links = []
-    links_with_articles = []
-    errors = []
+    logger.info(f"Received request to check {len(urls)} URLs")
+
+    link_details = []
+    insignificant_content_count = 0
 
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36'
     }
 
-    for url in urls:
+    for url in urls[:100]:  # Limit to first 100 URLs for safety
         if not (url.startswith('http://') or url.startswith('https://')):
             url = 'https://' + url
 
         try:
             response = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.content, 'html.parser')
-                if has_significant_content(soup):
-                    valid_links.append(url)
-                else:
-                    links_with_articles.append(url)
+            is_significant, word_count = has_significant_content(BeautifulSoup(response.content, 'html.parser'))
+            if response.status_code == 200 and is_significant:
+                status = "Valid"
             else:
-                invalid_links.append((url, response.status_code))
-        except requests.RequestException as e:
-            invalid_links.append((url, str(e)))
+                status = "Invalid"
+                if not is_significant:
+                    insignificant_content_count += 1
 
-    df = pd.DataFrame({
-        "URL": [url for url, _ in invalid_links] + valid_links + links_with_articles,
-        "Status": ["Invalid: " + str(code) for _, code in invalid_links] + ["Valid"] * len(valid_links) + ["Insignificant content"] * len(links_with_articles)
-    })
+            link_details.append({
+                "URL": url,
+                "Status Code": response.status_code,
+                "Status": status,
+                "Content Significance": "Significant" if is_significant else "Insignificant",
+                "Word Count": word_count
+            })
+        except requests.RequestException as e:
+            logger.error(f"Error checking URL {url}: {str(e)}")
+            link_details.append({
+                "URL": url,
+                "Status Code": "Error",
+                "Status": "Invalid",
+                "Content Significance": "N/A",
+                "Word Count": 0
+            })
+
+    df = pd.DataFrame(link_details)
+    summary = pd.DataFrame([{
+        "Total URLs Analyzed": len(urls),
+        "Total Valid URLs": len([d for d in link_details if d['Status'] == "Valid"]),
+        "Total Invalid URLs": len([d for d in link_details if d['Status'] == "Invalid"]),
+        "Total URLs with Insignificant Content": insignificant_content_count
+    }])
+    df = pd.concat([summary, df], axis=0).reset_index(drop=True)
 
     output = BytesIO()
-    df.to_csv(output, index=False)
+    df.to_csv(output, index=False, encoding='utf-8')
     output.seek(0)
 
-    return send_file(
+    response = send_file(
         output,
-        mimetype="text/csv",
+        mimetype='text/csv',
         as_attachment=True,
-        attachment_filename="url_analysis.csv"
+        download_name='links_analysis.csv'
     )
+
+    return response
 
 @app.errorhandler(404)
 def not_found(error):
@@ -73,8 +105,8 @@ def not_found(error):
 
 @app.errorhandler(500)
 def server_error(error):
+    logger.error(f"Server error: {str(error)}")
     return jsonify({"error": "Internal server error"}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
-
+    app.run()
