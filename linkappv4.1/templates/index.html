@@ -57,49 +57,16 @@
         button:hover {
             background-color: #45a049;
         }
-        #results {
-            margin-top: 1rem;
-        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>URL Checker</h1>
-        <form id="urlForm">
+        <form action="/check_links" method="post">
             <label for="urls">Enter URLs (one per line):</label>
             <textarea id="urls" name="urls" rows="10" required></textarea>
             <button type="submit">Check Links</button>
         </form>
-        <div id="results">
-            <h2>Results:</h2>
-            <p>Total URLs Analyzed: <span id="total_urls"></span></p>
-            <p>Total Valid Links: <span id="valid_links"></span></p>
-            <p>Total Invalid Links: <span id="invalid_links"></span></p>
-            <p>Total Links with Insignificant Content: <span id="insignificant_content"></span></p>
-            <button onclick="window.location.href='/download_csv'">Download CSV</button>
-        </div>
     </div>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script>
-        $(document).ready(function() {
-            $('#urlForm').submit(function(e) {
-                e.preventDefault();
-                $.ajax({
-                    type: "POST",
-                    url: "/check_links",
-                    data: $(this).serialize(),
-                    success: function(response) {
-                        $('#total_urls').text(response.total_urls);
-                        $('#valid_links').text(response.valid_links);
-                        $('#invalid_links').text(response.invalid_links);
-                        $('#insignificant_content').text(response.insignificant_content);
-                    },
-                    error: function() {
-                        alert('Error processing your request');
-                    }
-                });
-            });
-        });
-    </script>
 </body>
 </html>
