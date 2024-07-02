@@ -14,16 +14,18 @@
             justify-content: center;
             align-items: center;
             min-height: 100vh;
+            flex-direction: column;
         }
-        .container {
+        .container, .results {
             background-color: white;
             padding: 2rem;
             border-radius: 10px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             max-width: 600px;
             width: 100%;
+            margin-top: 20px;
         }
-        h1 {
+        h1, h2 {
             color: #333;
             text-align: center;
             margin-bottom: 1.5rem;
@@ -57,6 +59,9 @@
         button:hover {
             background-color: #45a049;
         }
+        .results div {
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -68,5 +73,30 @@
             <button type="submit">Check Links</button>
         </form>
     </div>
+    <div class="results" style="display: none;">
+        <h2>Results</h2>
+        <div>Total URLs Analyzed: <span id="total_urls"></span></div>
+        <div>Total Valid Links: <span id="valid_links"></span></div>
+        <div>Total Invalid Links: <span id="invalid_links"></span></div>
+        <div>Total Links with Insignificant Content: <span id="insignificant_content"></span></div>
+    </div>
+    <script>
+        const form = document.querySelector('form');
+        form.addEventListener('submit', function(event) {
+            event.preventDefault();
+            const formData = new FormData(form);
+            fetch('{{ url_for('check_links') }}', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.json())
+            .then(data => {
+                document.querySelector('.results').style.display = 'block';
+                document.getElementById('total_urls').textContent = data.total_urls;
+                document.getElementById('valid_links').textContent = data.valid_links;
+                document.getElementById('invalid_links').textContent = data.invalid_links;
+                document.getElementById('insignificant_content').textContent = data.insignificant_content;
+            }).catch(error => console.error('Error:', error));
+        });
+    </script>
 </body>
 </html>
