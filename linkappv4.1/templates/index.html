@@ -57,16 +57,28 @@
         button:hover {
             background-color: #45a049;
         }
+        .statistics {
+            background-color: #eee;
+            padding: 1rem;
+            margin-top: 1rem;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>URL Checker</h1>
-        <form action="/check_links" method="post">
+        <form action="{{ url_for('check_links') }}" method="post">
             <label for="urls">Enter URLs (one per line):</label>
             <textarea id="urls" name="urls" rows="10" required></textarea>
             <button type="submit">Check Links</button>
         </form>
+        <div class="statistics">
+            <p><strong>Total Links Analyzed:</strong> {{ stats.total_urls }}</p>
+            <p><strong>Total Valid Links:</strong> {{ stats.valid_links }}</p>
+            <p><strong>Total Invalid Links:</strong> {{ stats.invalid_links }}</p>
+            <p><strong>Total Links with Insufficient Content:</strong> {{ stats.insignificant_content }}</p>
+        </div>
     </div>
 </body>
 </html>
