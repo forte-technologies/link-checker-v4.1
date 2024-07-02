@@ -1,6 +1,7 @@
 import os
 import logging
-from flask import Flask, request, jsonify, render_template, send_file, Response
+from flask import Flask, request, jsonify, render_template, send_file
+from flask_cors import CORS
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -26,15 +27,13 @@ def has_significant_content(soup):
     logger.info(f"Word count: {word_count}")
     return word_count > 300
 
-@app.route('/', methods=['GET'])
+@app.route('/')
 def index():
     return render_template('index.html')
 
 @app.route('/check_links', methods=['POST'])
 def check_links():
     urls = request.form['urls'].split()
-    download = request.args.get('download')
-
     if not urls:
         return jsonify({"error": "No URLs provided"}), 400
 
@@ -42,8 +41,8 @@ def check_links():
 
     valid_links = []
     invalid_links = []
-    insignificant_content_links = []
     links_with_articles = []
+    error_details = []
 
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36'
@@ -60,45 +59,39 @@ def check_links():
                 soup = BeautifulSoup(response.content, 'html.parser')
                 if has_significant_content(soup):
                     links_with_articles.append(url)
-                else:
-                    insignificant_content_links.append(url)
             else:
                 invalid_links.append(url)
+                error_details.append(f"{url} - HTTP {response.status_code}")
         except requests.RequestException as e:
             logger.error(f"Error checking URL {url}: {str(e)}")
             invalid_links.append(url)
+            error_details.append(f"{url} - Exception {str(e)}")
 
-    data = {
-        "total_urls": len(urls),
-        "valid_links": len(valid_links),
-        "invalid_links": len(invalid_links),
-        "insignificant_content": len(insignificant_content_links),
-    }
-
-    if download == 'csv':
-        return generate_csv(valid_links, invalid_links, links_with_articles, insignificant_content_links)
-    else:
-        return jsonify(data)
-
-def generate_csv(valid_links, invalid_links, links_with_articles, insignificant_content_links):
     data = {
         "Valid Links": valid_links,
         "Invalid Links": invalid_links,
         "Links with Articles": links_with_articles,
-        "Insignificant Content Links": insignificant_content_links,
+        "Error Details": error_details
     }
 
-    df = pd.DataFrame(dict([(k, pd.Series(v)) for k,v in data.items()]))
+    df = pd.DataFrame(data)
     output = BytesIO()
     df.to_csv(output, index=False, encoding='utf-8')
     output.seek(0)
+
+    response_data = {
+        "total_urls": len(urls),
+        "valid_links": len(valid_links),
+        "invalid_links": len(invalid_links),
+        "insignificant_content": len(urls) - len(links_with_articles),
+    }
 
     return send_file(
         output,
         mimetype='text/csv',
         as_attachment=True,
         download_name='links_analysis.csv'
-    )
+    ), jsonify(response_data)
 
 @app.errorhandler(404)
 def not_found(error):
@@ -110,4 +103,5 @@ def server_error(error):
     return jsonify({"error": "Internal server error"}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()
+
