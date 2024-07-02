@@ -23,7 +23,7 @@
             max-width: 600px;
             width: 100%;
         }
-        h1 {
+        h1, h2 {
             color: #333;
             text-align: center;
             margin-bottom: 1.5rem;
@@ -57,28 +57,83 @@
         button:hover {
             background-color: #45a049;
         }
-        .statistics {
-            background-color: #eee;
-            padding: 1rem;
-            margin-top: 1rem;
-            border-radius: 4px;
+        #results {
+            margin-top: 2rem;
+            display: none;
+        }
+        #results table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        #results th, #results td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        #results th {
+            background-color: #f2f2f2;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>URL Checker</h1>
-        <form action="{{ url_for('check_links') }}" method="post">
+        <form id="urlForm">
             <label for="urls">Enter URLs (one per line):</label>
             <textarea id="urls" name="urls" rows="10" required></textarea>
             <button type="submit">Check Links</button>
         </form>
-        <div class="statistics">
-            <p><strong>Total Links Analyzed:</strong> {{ stats.total_urls }}</p>
-            <p><strong>Total Valid Links:</strong> {{ stats.valid_links }}</p>
-            <p><strong>Total Invalid Links:</strong> {{ stats.invalid_links }}</p>
-            <p><strong>Total Links with Insufficient Content:</strong> {{ stats.insignificant_content }}</p>
+        <div id="results">
+            <h2>Results</h2>
+            <table id="summaryTable"></table>
         </div>
     </div>
+
+    <script>
+        document.getElementById('urlForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            fetch('/check_links', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                displayResults(data.summary);
+                downloadCSV(data.csv);
+            })
+            .catch(error => console.error('Error:', error));
+        });
+
+        function displayResults(summary) {
+            const resultsDiv = document.getElementById('results');
+            const summaryTable = document.getElementById('summaryTable');
+            summaryTable.innerHTML = '';
+
+            for (const [key, value] of Object.entries(summary)) {
+                const row = summaryTable.insertRow();
+                const keyCell = row.insertCell(0);
+                const valueCell = row.insertCell(1);
+                keyCell.textContent = key;
+                valueCell.textContent = value;
+            }
+
+            resultsDiv.style.display = 'block';
+        }
+
+        function downloadCSV(csvContent) {
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            if (link.download !== undefined) {
+                const url = URL.createObjectURL(blob);
+                link.setAttribute("href", url);
+                link.setAttribute("download", "links_analysis.csv");
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        }
+    </script>
 </body>
 </html>
